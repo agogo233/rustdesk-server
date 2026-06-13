@@ -45,6 +45,7 @@ enum Data {
     Msg(Box<RendezvousMessage>, SocketAddr),
     RelayServers0(String),
     RelayServers(RelayServers),
+    AddRelayServer(String),
 }
 
 const REG_TIMEOUT: i32 = 30_000;
@@ -147,6 +148,15 @@ impl RendezvousServer {
         log::info!("local-ip: {:?}", rs.inner.local_ip);
         std::env::set_var("PORT_FOR_API", port.to_string());
         rs.parse_relay_servers(&get_arg("relay-servers"));
+        // Start webhook HTTP server for Natter integration
+        let webhook_key = get_arg("key");
+        if webhook_key != "-" && !webhook_key.is_empty() {
+            let wh_tx = tx.clone();
+            tokio::spawn(async move {
+                start_webhook_server(wh_tx, webhook_key).await;
+            });
+            log::info!("Listening on webhook http :31114");
+        }
         let mut listener = create_tcp_listener(port).await?;
         let mut listener2 = create_tcp_listener(nat_port).await?;
         let mut listener3 = create_tcp_listener(ws_port).await?;
@@ -254,6 +264,14 @@ impl RendezvousServer {
                         Data::Msg(msg, addr) => { allow_err!(socket.send(msg.as_ref(), addr).await); }
                         Data::RelayServers0(rs) => { self.parse_relay_servers(&rs); }
                         Data::RelayServers(rs) => { self.relay_servers = Arc::new(rs); }
+                        Data::AddRelayServer(addr) => {
+                            let mut rs0 = (*self.relay_servers0).clone();
+                            if !rs0.contains(&addr) {
+                                rs0.push(addr);
+                                self.relay_servers0 = Arc::new(rs0);
+                                log::info!("Webhook: added relay server {}", addr);
+                            }
+                        }
                     }
                 }
                 res = socket.next() => {
@@ -1368,4 +1386,93 @@ async fn create_tcp_listener(port: i32) -> ResultType<TcpListener> {
     let s = listen_any(port as _).await?;
     log::debug!("listen on tcp {:?}", s.local_addr());
     Ok(s)
+}
+
+// --- Webhook server for Natter integration ---
+
+use axum::{routing::post, Json, extract::State, http::StatusCode};
+use hmac::{Hmac, Mac};
+use hbb_common::sha2::Sha256;
+
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(serde::Deserialize)]
+struct WebhookPayload {
+    client_id: String,
+    protocol: String,
+    private_ip: String,
+    private_port: u16,
+    public_ip: String,
+    public_port: u16,
+    timestamp: i64,
+    signature: String,
+}
+
+#[derive(Clone)]
+struct WebhookState {
+    tx: mpsc::UnboundedSender<Data>,
+    hmac_key: String,
+}
+
+async fn webhook_handler(
+    State(state): State<WebhookState>,
+    Json(payload): Json<WebhookPayload>,
+) -> StatusCode {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    if (now - payload.timestamp).abs() > 60 {
+        log::warn!("Webhook: stale timestamp from client={}", payload.client_id);
+        return StatusCode::UNAUTHORIZED;
+    }
+    let msg = format!(
+        "{}|{}|{}|{}|{}|{}|{}",
+        payload.protocol,
+        payload.private_ip,
+        payload.private_port,
+        payload.public_ip,
+        payload.public_port,
+        payload.timestamp,
+        payload.client_id
+    );
+    let expected = {
+        let mut mac =
+            HmacSha256::new_from_slice(state.hmac_key.as_bytes()).unwrap();
+        mac.update(msg.as_bytes());
+        base64::encode(&mac.finalize().into_bytes())
+    };
+    if payload.signature != expected {
+        log::warn!(
+            "Webhook: signature mismatch client={} ip={}",
+            payload.client_id,
+            payload.public_ip
+        );
+        return StatusCode::UNAUTHORIZED;
+    }
+    let relay_addr = if payload.public_ip.contains(':') {
+        format!("[{}]:{}", payload.public_ip, payload.public_port)
+    } else {
+        format!("{}:{}", payload.public_ip, payload.public_port)
+    };
+    if state.tx.send(Data::AddRelayServer(relay_addr)).is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+    log::info!("Webhook: relay added {} from client={}", relay_addr, payload.client_id);
+    StatusCode::OK
+}
+
+async fn start_webhook_server(tx: mpsc::UnboundedSender<Data>, hmac_key: String) {
+    let state = WebhookState { tx, hmac_key };
+    let app = Router::new()
+        .route("/webhook", post(webhook_handler))
+        .with_state(state);
+    let addr: std::net::SocketAddr = ([0, 0, 0, 0], 31114).into();
+    log::info!("Webhook HTTP server listening on {}", addr);
+    if let Err(e) = axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+    {
+        log::error!("Webhook server failed: {}", e);
+    }
 }
