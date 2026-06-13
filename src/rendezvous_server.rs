@@ -149,7 +149,7 @@ impl RendezvousServer {
         std::env::set_var("PORT_FOR_API", port.to_string());
         rs.parse_relay_servers(&get_arg("relay-servers"));
         // Start webhook HTTP server for Natter integration
-        let webhook_key = get_arg("key");
+        let webhook_key = get_arg_or("webhook-key", get_arg("key"));
         if webhook_key != "-" && !webhook_key.is_empty() {
             let wh_tx = tx.clone();
             tokio::spawn(async move {
