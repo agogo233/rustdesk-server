@@ -267,8 +267,9 @@ impl RendezvousServer {
                         Data::AddRelayServer(addr) => {
                             let mut rs0 = (*self.relay_servers0).clone();
                             if !rs0.contains(&addr) {
-                                rs0.push(addr);
+                                rs0.push(addr.clone());
                                 self.relay_servers0 = Arc::new(rs0);
+                                self.relay_servers = self.relay_servers0.clone();
                                 log::info!("Webhook: added relay server {}", addr);
                             }
                         }
@@ -1390,7 +1391,7 @@ async fn create_tcp_listener(port: i32) -> ResultType<TcpListener> {
 
 // --- Webhook server for Natter integration ---
 
-use axum::{routing::post, Json, extract::State, http::StatusCode};
+use axum::{routing::post, Router, Json, Extension, http::StatusCode};
 use hmac::{Hmac, Mac};
 use hbb_common::sha2::Sha256;
 
@@ -1415,7 +1416,7 @@ struct WebhookState {
 }
 
 async fn webhook_handler(
-    State(state): State<WebhookState>,
+    Extension(state): Extension<WebhookState>,
     Json(payload): Json<WebhookPayload>,
 ) -> StatusCode {
     let now = std::time::SystemTime::now()
@@ -1466,7 +1467,7 @@ async fn start_webhook_server(tx: mpsc::UnboundedSender<Data>, hmac_key: String)
     let state = WebhookState { tx, hmac_key };
     let app = Router::new()
         .route("/webhook", post(webhook_handler))
-        .with_state(state);
+        .layer(Extension(state));
     let addr: std::net::SocketAddr = ([0, 0, 0, 0], 31114).into();
     log::info!("Webhook HTTP server listening on {}", addr);
     if let Err(e) = axum::Server::bind(&addr)
