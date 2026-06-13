@@ -8,12 +8,12 @@ services:
   hbbs:
     container_name: hbbs
     ports:
-      - 21115:21115
-      - 21116:21116
-      - 21116:21116/udp
-      - 21118:21118
+      - 31115:31115
+      - 31116:31116
+      - 31116:31116/udp
+      - 31118:31118
     image: ghcr.io/rustdesk/rustdesk-server:latest-non-s6
-    command: hbbs -r rustdesk.example.com:21117
+    command: hbbs -r rustdesk.example.com:31117
     volumes:
       - ./data:/data
     networks:
@@ -25,8 +25,8 @@ services:
   hbbr:
     container_name: hbbr
     ports:
-      - 21117:21117
-      - 21119:21119
+      - 31117:31117
+      - 31119:31119
     image: ghcr.io/rustdesk/rustdesk-server:latest-non-s6
     command: hbbr
     volumes:
