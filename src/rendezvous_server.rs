@@ -1456,7 +1456,7 @@ async fn webhook_handler(
     } else {
         format!("{}:{}", payload.public_ip, payload.public_port)
     };
-    if state.tx.send(Data::AddRelayServer(relay_addr)).is_err() {
+    if state.tx.send(Data::AddRelayServer(relay_addr.clone())).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
     log::info!("Webhook: relay added {} from client={}", relay_addr, payload.client_id);
