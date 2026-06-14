@@ -45,7 +45,7 @@ enum Data {
     Msg(Box<RendezvousMessage>, SocketAddr),
     RelayServers0(String),
     RelayServers(RelayServers),
-    AddRelayServer(String),
+    AddRelayServer(String, String),
 }
 
 const REG_TIMEOUT: i32 = 30_000;
@@ -87,6 +87,7 @@ pub struct RendezvousServer {
     tx: Sender,
     relay_servers: Arc<RelayServers>,
     relay_servers0: Arc<RelayServers>,
+    relay_servers_map: Arc<HashMap<String, String>>,
     rendezvous_servers: Arc<Vec<String>>,
     inner: Arc<Inner>,
 }
@@ -134,6 +135,7 @@ impl RendezvousServer {
             tx: tx.clone(),
             relay_servers: Default::default(),
             relay_servers0: Default::default(),
+            relay_servers_map: Default::default(),
             rendezvous_servers: Arc::new(rendezvous_servers),
             inner: Arc::new(Inner {
                 serial,
@@ -264,14 +266,31 @@ impl RendezvousServer {
                         Data::Msg(msg, addr) => { allow_err!(socket.send(msg.as_ref(), addr).await); }
                         Data::RelayServers0(rs) => { self.parse_relay_servers(&rs); }
                         Data::RelayServers(rs) => { self.relay_servers = Arc::new(rs); }
-                        Data::AddRelayServer(addr) => {
+                        Data::AddRelayServer(client_id, addr) => {
+                            let mut map = (*self.relay_servers_map).clone();
+                            let old = map.insert(client_id.clone(), addr.clone());
+                            self.relay_servers_map = Arc::new(map);
+
                             let mut rs0 = (*self.relay_servers0).clone();
+                            if let Some(ref old_addr) = old {
+                                if old_addr != &addr {
+                                    let same_used_by_other = self.relay_servers_map
+                                        .iter()
+                                        .any(|(k, v)| k != &client_id && v == old_addr);
+                                    if !same_used_by_other {
+                                        if let Some(pos) = rs0.iter().position(|x| x == old_addr) {
+                                            rs0.remove(pos);
+                                        }
+                                    }
+                                }
+                            }
                             if !rs0.contains(&addr) {
                                 rs0.push(addr.clone());
-                                self.relay_servers0 = Arc::new(rs0);
-                                self.relay_servers = self.relay_servers0.clone();
-                                log::info!("Webhook: added relay server {}", addr);
                             }
+                            self.relay_servers0 = Arc::new(rs0);
+                            self.relay_servers = self.relay_servers0.clone();
+                            log::info!("Webhook: relay server {} {} from client={}",
+                                addr, if old.as_ref().map_or(true, |o| o != &addr) { if old.is_some() { "updated" } else { "added" } } else { "refreshed" }, client_id);
                         }
                     }
                 }
@@ -1456,10 +1475,11 @@ async fn webhook_handler(
     } else {
         format!("{}:{}", payload.public_ip, payload.public_port)
     };
-    if state.tx.send(Data::AddRelayServer(relay_addr.clone())).is_err() {
+    let client_id = payload.client_id.clone();
+    if state.tx.send(Data::AddRelayServer(client_id, relay_addr.clone())).is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
-    log::info!("Webhook: relay added {} from client={}", relay_addr, payload.client_id);
+    log::info!("Webhook: relay request {} from client={}", relay_addr, payload.client_id);
     StatusCode::OK
 }
 
