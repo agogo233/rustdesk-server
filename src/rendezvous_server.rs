@@ -157,7 +157,7 @@ impl RendezvousServer {
             tokio::spawn(async move {
                 start_webhook_server(wh_tx, webhook_key).await;
             });
-            log::info!("Listening on webhook http :31114");
+            log::info!("Listening on webhook http :31110");
         }
         let mut listener = create_tcp_listener(port).await?;
         let mut listener2 = create_tcp_listener(nat_port).await?;
@@ -1488,7 +1488,7 @@ async fn start_webhook_server(tx: mpsc::UnboundedSender<Data>, hmac_key: String)
     let app = Router::new()
         .route("/webhook", post(webhook_handler))
         .layer(Extension(state));
-    let addr: std::net::SocketAddr = ([0, 0, 0, 0], 31114).into();
+    let addr: std::net::SocketAddr = ([0, 0, 0, 0], 31110).into();
     log::info!("Webhook HTTP server listening on {}", addr);
     if let Err(e) = axum::Server::bind(&addr)
         .serve(app.into_make_service())

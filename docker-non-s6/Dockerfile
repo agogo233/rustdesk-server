@@ -10,7 +10,7 @@ COPY entrypoint.sh /usr/bin/entrypoint.sh
 
 RUN chmod a+x /usr/bin/hbbs /usr/bin/hbbr /usr/bin/entrypoint.sh
 
-EXPOSE 31114 31115 31116 31116/udp 31117 31118 31119
+EXPOSE 31110 31115 31116 31116/udp 31117 31118 31119
 
 WORKDIR /data
 VOLUME /data
