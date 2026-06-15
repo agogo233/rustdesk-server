@@ -109,7 +109,7 @@ fn doctor_ip(server_ip_address: std::net::IpAddr, server_address: Option<&str>) 
     // TODO: ICMP ping?
 
     // port check TCP (UDP is hard to check)
-    doctor_tcp(server_ip_address, "31114", "webhook API");
+    doctor_tcp(server_ip_address, "31114", "API");
     doctor_tcp(server_ip_address, "31115", "hbbs extra port for nat test");
     doctor_tcp(server_ip_address, "31116", "hbbs");
     doctor_tcp(server_ip_address, "31117", "hbbr tcp");
