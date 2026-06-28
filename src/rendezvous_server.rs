@@ -12,10 +12,7 @@ use hbb_common::{
     },
     log,
     protobuf::{Message as _, MessageField},
-    rendezvous_proto::{
-        register_pk_response::Result,
-        *,
-    },
+    rendezvous_proto::*,
     tcp::{listen_any, FramedStream},
     timeout,
     tokio::{
