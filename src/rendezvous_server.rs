@@ -33,7 +33,7 @@ use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Instant,
 };
 
@@ -84,7 +84,7 @@ pub struct RendezvousServer {
     tx: Sender,
     relay_servers: Arc<RelayServers>,
     relay_servers0: Arc<RelayServers>,
-    relay_servers_map: Arc<HashMap<String, String>>,
+    relay_servers_map: Arc<RwLock<HashMap<String, String>>>,
     rendezvous_servers: Arc<Vec<String>>,
     inner: Arc<Inner>,
 }
@@ -264,14 +264,13 @@ impl RendezvousServer {
                         Data::RelayServers0(rs) => { self.parse_relay_servers(&rs); }
                         Data::RelayServers(rs) => { self.relay_servers = Arc::new(rs); }
                         Data::AddRelayServer(client_id, addr) => {
-                            let mut map = (*self.relay_servers_map).clone();
+                            let mut map = self.relay_servers_map.write().unwrap();
                             let old = map.insert(client_id.clone(), addr.clone());
-                            self.relay_servers_map = Arc::new(map);
 
                             let mut rs0 = (*self.relay_servers0).clone();
                             if let Some(ref old_addr) = old {
                                 if old_addr != &addr {
-                                    let same_used_by_other = self.relay_servers_map
+                                    let same_used_by_other = map
                                         .iter()
                                         .any(|(k, v)| k != &client_id && v == old_addr);
                                     if !same_used_by_other {
@@ -284,6 +283,7 @@ impl RendezvousServer {
                             if !rs0.contains(&addr) {
                                 rs0.push(addr.clone());
                             }
+                            drop(map);
                             self.relay_servers0 = Arc::new(rs0);
                             self.relay_servers = self.relay_servers0.clone();
                             log::info!("Webhook: relay server {} {} from client={}",
