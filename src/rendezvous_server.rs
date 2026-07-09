@@ -354,7 +354,7 @@ impl RendezvousServer {
         bytes: &BytesMut,
         addr: SocketAddr,
         socket: &mut FramedSocket,
-        key: &str,
+        _key: &str,
     ) -> ResultType<()> {
         if let Ok(msg_in) = RendezvousMessage::parse_from_bytes(bytes) {
             match msg_in.union {
@@ -379,7 +379,7 @@ impl RendezvousServer {
                         send_rk_res(socket, addr, result).await?;
                     }
                 }
-                Some(rendezvous_message::Union::PunchHoleRequest(ph)) => {
+                Some(rendezvous_message::Union::PunchHoleRequest(_ph)) => {
                     // UDP PunchHoleRequest is intentionally unsupported.
                     // The supported client path sends PunchHoleRequest over TCP/WS.
                 }
@@ -904,6 +904,7 @@ impl RendezvousServer {
         Ok(())
     }
 
+    #[allow(dead_code)]
     #[inline]
     async fn handle_udp_punch_hole_request(
         &mut self,

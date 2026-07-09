@@ -174,6 +174,7 @@ impl PeerMap {
         self.map.read().await.get(id).cloned()
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub(crate) async fn is_in_memory(&self, id: &str) -> bool {
         self.map.read().await.contains_key(id)
