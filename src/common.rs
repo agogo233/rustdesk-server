@@ -1,6 +1,6 @@
 use clap::App;
 use hbb_common::{
-    anyhow::{Context, Result}, log, tokio, ResultType
+    anyhow::{Context, Result}, log, ResultType
 };
 use ini::Ini;
 use sodiumoxide::crypto::sign;
